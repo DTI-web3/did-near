@@ -8,6 +8,10 @@ edition = "2021"
 # Link to the repository will be available via `contract_source_metadata` view-function.
 repository = "https://github.com/DTI-web3/did-near"
 
+[contract]
+name = "did-near"
+path = "."
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
