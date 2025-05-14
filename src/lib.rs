@@ -3,11 +3,11 @@ use near_sdk::{env, near, store::LookupMap, AccountId};
 
 #[near(contract_state)]
 pub struct NearDIDRegistry {
-    owners: LookupMap<AccountId, AccountId>,
-    delegates: LookupMap<(AccountId, String, AccountId), u64>,
-    attributes: LookupMap<(AccountId, String, Vec<u8>), u64>,
-    changed: LookupMap<AccountId, u64>,
-    nonce: LookupMap<AccountId, u64>,
+    owners: LookupMap<String, String>,
+    delegates: LookupMap<(String, String, String), u64>,
+    attributes: LookupMap<(String, String, Vec<u8>), u64>,
+    changed: LookupMap<String, u64>,
+    nonce: LookupMap<String, u64>,
 }
 
 impl Default for NearDIDRegistry {
@@ -24,25 +24,25 @@ impl Default for NearDIDRegistry {
 
 #[near]
 impl NearDIDRegistry {
-    fn assert_only_owner(&self, identity: &AccountId, actor: &AccountId) {
+    fn assert_only_owner(&self, identity: &String, actor: &String) {
         let owner = self.identity_owner(identity.clone());
         assert_eq!(actor, &owner, "bad_actor");
     }
 
-    pub fn identity_owner(&self, identity: AccountId) -> AccountId {
+    pub fn identity_owner(&self, identity: String) -> String {
         self.owners.get(&identity).unwrap_or(&identity).clone()
     }
 
-    pub fn change_owner(&mut self, identity: AccountId, new_owner: AccountId) {
-        let actor = env::predecessor_account_id();
+    pub fn change_owner(&mut self, identity: String, new_owner: String) {
+        let actor = env::predecessor_account_id().to_string();
         self.assert_only_owner(&identity, &actor);
 
         self.owners.insert(identity.clone(), new_owner);
         self.changed.insert(identity, env::block_height());
     }
 
-    pub fn add_delegate(&mut self, identity: AccountId, delegate_type: String, delegate: AccountId, validity_secs: u64) {
-        let actor = env::predecessor_account_id();
+    pub fn add_delegate(&mut self, identity: String, delegate_type: String, delegate: String, validity_secs: u64) {
+        let actor = env::predecessor_account_id().to_string();
         self.assert_only_owner(&identity, &actor);
 
         let valid_until = env::block_timestamp_ms() / 1000 + validity_secs;
@@ -50,23 +50,23 @@ impl NearDIDRegistry {
         self.changed.insert(identity, env::block_height());
     }
 
-    pub fn revoke_delegate(&mut self, identity: AccountId, delegate_type: String, delegate: AccountId) {
-        let actor = env::predecessor_account_id();
+    pub fn revoke_delegate(&mut self, identity: String, delegate_type: String, delegate: String) {
+        let actor = env::predecessor_account_id().to_string();
         self.assert_only_owner(&identity, &actor);
 
         self.delegates.insert((identity.clone(), delegate_type.clone(), delegate.clone()), 0);
         self.changed.insert(identity, env::block_height());
     }
 
-    pub fn valid_delegate(&self, identity: AccountId, delegate_type: String, delegate: AccountId) -> bool {
+    pub fn valid_delegate(&self, identity: String, delegate_type: String, delegate: String) -> bool {
         match self.delegates.get(&(identity, delegate_type, delegate)) {
-            Some(valid_until) => valid_until > &(env::block_timestamp_ms() / 1000),
+            Some(valid_until) => *valid_until > env::block_timestamp_ms() / 1000,
             None => false,
         }
     }
 
-    pub fn set_attribute(&mut self, identity: AccountId, name: String, value: Vec<u8>, validity_secs: u64) {
-        let actor = env::predecessor_account_id();
+    pub fn set_attribute(&mut self, identity: String, name: String, value: Vec<u8>, validity_secs: u64) {
+        let actor = env::predecessor_account_id().to_string();
         self.assert_only_owner(&identity, &actor);
 
         let valid_until = env::block_timestamp_ms() / 1000 + validity_secs;
@@ -74,31 +74,31 @@ impl NearDIDRegistry {
         self.changed.insert(identity, env::block_height());
     }
 
-    pub fn revoke_attribute(&mut self, identity: AccountId, name: String, value: Vec<u8>) {
-        let actor = env::predecessor_account_id();
+    pub fn revoke_attribute(&mut self, identity: String, name: String, value: Vec<u8>) {
+        let actor = env::predecessor_account_id().to_string();
         self.assert_only_owner(&identity, &actor);
 
         self.attributes.insert((identity.clone(), name.clone(), value.clone()), 0);
         self.changed.insert(identity, env::block_height());
     }
 
-    pub fn valid_attribute(&self, identity: AccountId, name: String, value: Vec<u8>) -> bool {
+    pub fn valid_attribute(&self, identity: String, name: String, value: Vec<u8>) -> bool {
         match self.attributes.get(&(identity, name, value)) {
-            Some(valid_until) => valid_until > &(env::block_timestamp_ms() / 1000),
+            Some(valid_until) => *valid_until > env::block_timestamp_ms() / 1000,
             None => false,
         }
     }
 
-    pub fn get_nonce(&self, identity: AccountId) -> u64 {
+    pub fn get_nonce(&self, identity: String) -> u64 {
         *self.nonce.get(&identity).unwrap_or(&0)
     }
 
-    pub fn increment_nonce(&mut self, identity: AccountId) {
+    pub fn increment_nonce(&mut self, identity: String) {
         let n = self.nonce.get(&identity).unwrap_or(&0);
         self.nonce.insert(identity, n + 1);
     }
 
-    pub fn get_changed(&self, identity: AccountId) -> u64 {
+    pub fn get_changed(&self, identity: String) -> u64 {
         *self.changed.get(&identity).unwrap_or(&0)
     }
 }
@@ -125,7 +125,7 @@ mod tests {
     fn identity_owner() {
         let owner = accounts(1);
         let contract = NearDIDRegistry::default();
-        assert_eq!(contract.identity_owner(owner.clone()), owner);
+        assert_eq!(contract.identity_owner(owner.clone().to_string()), owner);
     }
 
     #[test]
@@ -136,11 +136,11 @@ mod tests {
 
         let mut contract = NearDIDRegistry::default();
 
-        assert_eq!(contract.identity_owner(owner.clone()), owner);
+        assert_eq!(contract.identity_owner(owner.clone().to_string().to_string()), owner);
 
-        contract.change_owner(owner.clone(), new_owner.clone());
+        contract.change_owner(owner.clone().to_string(), new_owner.clone().to_string());
 
-        assert_eq!(contract.identity_owner(owner.clone()), new_owner);
+        assert_eq!(contract.identity_owner(owner.clone().to_string()), new_owner);
         // assert_eq!(contract.get_changed(owner), 40);
     }
 
@@ -154,7 +154,7 @@ mod tests {
         set_context(attacker.clone());
 
         let mut contract = NearDIDRegistry::default();
-        contract.change_owner(owner, new_owner);
+        contract.change_owner(owner.to_string(), new_owner.to_string());
     }
 
     #[test]
@@ -168,9 +168,9 @@ mod tests {
         set_context(owner.clone());
 
         let mut contract = NearDIDRegistry::default();
-        contract.add_delegate(identity.clone(), delegate_type.clone(), delegate.clone(), validity_secs);
+        contract.add_delegate(identity.clone().to_string(), delegate_type.clone(), delegate.clone().to_string(), validity_secs);
 
-        let valid = contract.valid_delegate(identity.clone(), delegate_type.clone(), delegate.clone());
+        let valid = contract.valid_delegate(identity.clone().to_string(), delegate_type.clone(), delegate.clone().to_string());
         assert!(valid, "El delegado debería ser válido");
     }
 
@@ -185,7 +185,7 @@ mod tests {
         set_context(attacker.clone());
 
         let mut contract = NearDIDRegistry::default();
-        contract.add_delegate(identity, delegate_type, delegate, 1000);
+        contract.add_delegate(identity.to_string(), delegate_type, delegate.to_string(), 1000);
     }
 
     #[test]
@@ -200,11 +200,11 @@ mod tests {
 
         let mut contract = NearDIDRegistry::default();
 
-        contract.add_delegate(identity.clone(), delegate_type.clone(), delegate.clone(), validity_secs);
-        assert!(contract.valid_delegate(identity.clone(), delegate_type.clone(), delegate.clone()));
+        contract.add_delegate(identity.clone().to_string(), delegate_type.clone(), delegate.clone().to_string(), validity_secs);
+        assert!(contract.valid_delegate(identity.clone().to_string(), delegate_type.clone(), delegate.clone().to_string()));
 
-        contract.revoke_delegate(identity.clone(), delegate_type.clone(), delegate.clone());
-        assert!(!contract.valid_delegate(identity.clone(), delegate_type.clone(), delegate.clone()));
+        contract.revoke_delegate(identity.clone().to_string(), delegate_type.clone(), delegate.clone().to_string());
+        assert!(!contract.valid_delegate(identity.clone().to_string(), delegate_type.clone(), delegate.clone().to_string()));
     }
 
     #[test]
@@ -219,7 +219,7 @@ mod tests {
 
         let mut contract = NearDIDRegistry::default();
 
-        contract.revoke_delegate(identity, delegate_type, delegate);
+        contract.revoke_delegate(identity.to_string(), delegate_type, delegate.to_string());
     }
 
     #[test]
@@ -234,11 +234,11 @@ mod tests {
 
         let mut contract = NearDIDRegistry::default();
 
-        contract.set_attribute(identity.clone(), name.clone(), value.clone(), validity_secs);
+        contract.set_attribute(identity.clone().to_string(), name.clone(), value.clone(), validity_secs);
 
         let stored_valid_until = contract
             .attributes
-            .get(&(identity.clone(), name.clone(), value.clone()))
+            .get(&(identity.clone().to_string(), name.clone(), value.clone()))
             .unwrap();
         assert_eq!(stored_valid_until, &validity_secs);
     }
@@ -255,7 +255,7 @@ mod tests {
 
         let mut contract = NearDIDRegistry::default();
 
-        contract.set_attribute(identity, name, value, 1000);
+        contract.set_attribute(identity.to_string(), name, value, 1000);
     }
 
     #[test]
@@ -270,15 +270,15 @@ mod tests {
 
         let mut contract = NearDIDRegistry::default();
 
-        contract.set_attribute(identity.clone(), name.clone(), value.clone(), validity_secs);
-        assert!(contract.valid_attribute(identity.clone(), name.clone(), value.clone()));
+        contract.set_attribute(identity.clone().to_string(), name.clone(), value.clone(), validity_secs);
+        assert!(contract.valid_attribute(identity.clone().to_string(), name.clone(), value.clone()));
 
-        contract.revoke_attribute(identity.clone(), name.clone(), value.clone());
-        assert!(!contract.valid_attribute(identity.clone(), name.clone(), value.clone()));
+        contract.revoke_attribute(identity.clone().to_string(), name.clone(), value.clone());
+        assert!(!contract.valid_attribute(identity.clone().to_string(), name.clone(), value.clone()));
 
         let stored = contract
             .attributes
-            .get(&(identity.clone(), name.clone(), value.clone()))
+            .get(&(identity.clone().to_string(), name.clone(), value.clone()))
             .unwrap();
         assert_eq!(stored, &0, "El atributo debe estar revocado (valor 0)");
     }
